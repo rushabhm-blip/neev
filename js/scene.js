@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-const BLUE = 0x7d93b5, BLUE_D = 0x5f7599, WHITE = 0xf3f5f9, INK = 0x151c28;
+const BLUE = 0x6c86ae, BLUE_D = 0x4d6489, WHITE = 0xf3f5f9, INK = 0x151c28;
 
 export function initScene({ container, screenEl, slateEl, onKey }) {
   const w0 = container.clientWidth, h0 = container.clientHeight;
@@ -20,8 +21,11 @@ export function initScene({ container, screenEl, slateEl, onKey }) {
   css.domElement.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden;';
   container.appendChild(css.domElement);
 
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
   const scene = new THREE.Scene();
-  const cssScene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.035).texture;
+  scene.environmentIntensity = 0.5;
   const camera = new THREE.PerspectiveCamera(32, w0 / h0, 0.1, 60);
   const home = { pos: new THREE.Vector3(3.9, 3.0, 5.4), target: new THREE.Vector3(0, 1.05, 0.9) };
   camera.position.copy(home.pos);
@@ -36,17 +40,23 @@ export function initScene({ container, screenEl, slateEl, onKey }) {
   controls.update();
 
   // ---- lights
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xb7c3d6, 1.25));
-  const sun = new THREE.DirectionalLight(0xffffff, 2.1);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8696b4, 0.55));
+  const rim = new THREE.DirectionalLight(0x7fa6ff, 1.6); rim.position.set(-4, 3, -5); scene.add(rim);
+  const sun = new THREE.DirectionalLight(0xffffff, 1.7);
   sun.position.set(3.5, 7, 5); sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = -6; sun.shadow.camera.right = 6; sun.shadow.camera.top = 6; sun.shadow.camera.bottom = -6; sun.shadow.bias = -0.0004;
   scene.add(sun);
   const fill = new THREE.DirectionalLight(0xdde8ff, 0.7); fill.position.set(-5, 3, 2); scene.add(fill);
 
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.22 }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.38 }));
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+  // soft pool of light on the table so the product feels grounded
+  const glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d'); const gr = g.createRadialGradient(256, 256, 20, 256, 256, 256); gr.addColorStop(0, 'rgba(120,160,255,.42)'); gr.addColorStop(.45, 'rgba(90,130,230,.16)'); gr.addColorStop(1, 'rgba(60,100,200,0)'); g.fillStyle = gr; g.fillRect(0, 0, 512, 512); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(11, 11), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false }));
+  glow.rotation.x = -Math.PI / 2; glow.position.set(0, -0.004, 0.8); scene.add(glow);
 
   const mat = (c, r = 0.5, m = 0.04) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
+  const glossy = (c, r = 0.35) => new THREE.MeshPhysicalMaterial({ color: c, roughness: r, metalness: 0.08, clearcoat: 0.6, clearcoatRoughness: 0.28 });
   const shadowed = (o) => { o.traverse((n) => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } }); return o; };
 
   // ---- machine body (side-profile extrusion)
@@ -56,13 +66,18 @@ export function initScene({ container, screenEl, slateEl, onKey }) {
   shape.moveTo(-1.2, 0.02); shape.lineTo(1.2, 0.02); shape.lineTo(1.2, 0.72); shape.lineTo(0.62, 0.9); shape.lineTo(-0.75, 2.15); shape.lineTo(-1.2, 2.15); shape.closePath();
   const bodyGeo = new THREE.ExtrudeGeometry(shape, { depth: W - 0.16, bevelEnabled: true, bevelSize: 0.08, bevelThickness: 0.08, bevelSegments: 6, curveSegments: 8 });
   bodyGeo.translate(0, 0, -(W - 0.16) / 2); bodyGeo.rotateY(-Math.PI / 2);
-  const body = new THREE.Mesh(bodyGeo, mat(BLUE, 0.48, 0.06)); machine.add(body);
+  const body = new THREE.Mesh(bodyGeo, glossy(BLUE, 0.42)); machine.add(body);
+  // accent LED strip along the edge above the keys + status light
+  const led = new THREE.Mesh(new RoundedBoxGeometry(2.0, 0.035, 0.05, 2, 0.015), new THREE.MeshBasicMaterial({ color: 0x5b8bff }));
+  led.position.set(0, 0.92, 0.6); led.rotation.x = 0.7; machine.add(led);
+  const statusLed = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 16), new THREE.MeshBasicMaterial({ color: 0x3ddc84 }));
+  statusLed.position.set(1.02, 0.9, 0.97); machine.add(statusLed);
 
   // screen bezel + CSS3D screen on the sloped face
   const slopeN = new THREE.Vector3(0, 0.739, 0.674).normalize();
   const slopeRot = -Math.atan2(0.739, 0.674);          // rotation.x so +z faces slopeN
   const screenCenter = new THREE.Vector3(0, 1.525, -0.065).addScaledVector(slopeN, 0.115);
-  const bezel = new THREE.Mesh(new RoundedBoxGeometry(2.16, 1.56, 0.05, 4, 0.06), mat(INK, 0.3, 0.1));
+  const bezel = new THREE.Mesh(new RoundedBoxGeometry(2.16, 1.56, 0.05, 4, 0.06), new THREE.MeshPhysicalMaterial({ color: 0x0c1220, roughness: 0.25, metalness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 }));
   bezel.position.copy(screenCenter).addScaledVector(slopeN, -0.045); bezel.rotation.x = slopeRot; machine.add(bezel);
   const screenObj = new CSS3DObject(screenEl);
   screenObj.scale.setScalar(1 / 400);

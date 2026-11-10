@@ -11,6 +11,7 @@ const fresh = () => ({
     { id: 'milk', name: 'Milk 1 L', unit: 'pack', price: 56, stock: 18, reserved: 0, emoji: '🥛', published: true },
     { id: 'onion', name: 'Onions', unit: 'kg', price: 32, stock: 20, reserved: 0, emoji: '🧅', published: true },
     { id: 'potato', name: 'Potatoes', unit: 'kg', price: 28, stock: 25, reserved: 0, emoji: '🥔', published: true },
+    { id: 'tomatoes', name: 'Tomatoes', unit: 'kg', price: 40, stock: 0, reserved: 0, img: 'assets/tomato.png', published: false },
     { id: 'shirt', name: 'Blue cotton shirt', unit: 'pcs', price: 650, stock: 6, reserved: 0, img: 'assets/shirt.png', published: true },
     { id: 'rose', name: 'Rose bouquet', unit: 'pcs', price: 350, stock: 4, reserved: 0, img: 'assets/rose.png', published: false },
     { id: 'dupatta', name: 'Printed dupatta', unit: 'pcs', price: 350, stock: 15, reserved: 0, img: 'assets/dupatta.png', published: true },

@@ -1,4 +1,5 @@
 import * as S from './store.js';
+import { thumb as artThumb } from './art.js';
 const { state, money, byId, available } = S;
 
 // Machine UI state (screen routing + inputs). Business data lives in store.js.
@@ -28,7 +29,7 @@ const icon = (n) => ({
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
 }[n] || '');
 const I = (n, s = 22) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon(n)}</svg>`;
-const thumb = (p, size = 64) => p.img ? `<img src="${p.img}" style="width:${size}px;height:${size}px" alt="">` : `<span class="emo" style="width:${size}px;height:${size}px;font-size:${size * .55}px">${p.emoji || '📦'}</span>`;
+const thumb = (p, size = 64) => artThumb(p, size, Math.max(8, size * 0.16));
 const nav = (a) => `<nav class="m-nav">${[['home', 'Home', 'home'], ['sell', 'Sell', 'cart'], ['stock', 'Stock', 'box'], ['orders', 'Orders', 'list']].map(([k, l, ic]) => `<button data-act="go" data-to="${k}" class="${a === k ? 'on' : ''}">${I(ic, 22)}<span>${l}</span></button>`).join('')}</nav>`;
 const top = (title, back) => `<header class="m-top"><div class="brand">neev</div><div class="shop">${I('store', 18)} ${state.shop.name}</div><div class="spacer"></div>${state.conditions.alert && !state.conditions.snoozed ? `<button class="chipbtn warn" data-act="go" data-to="cond">${I('warn', 16)} Alert</button>` : ''}<span class="wifi">${I('wifi', 20)}</span><span class="clock">10:24</span></header>${title ? `<div class="m-title">${back ? `<button class="back" data-act="back">${I('back', 24)}</button>` : ''}<h2>${title}</h2></div>` : ''}`;
 const pendingCount = () => state.orders.filter((o) => o.status === 'pending').length;
@@ -85,7 +86,7 @@ const screens = {
   },
   review() {
     const d = m.draft;
-    return `${top('Review stock', true)}<div class="m-body review"><div class="rv"><div class="photo">${d.name.toLowerCase().includes('tomato') ? '<img src="assets/tomato.png" alt="">' : '<span class="emo" style="font-size:80px">📦</span>'}</div><div class="fields"><h2>${d.name} <i class="tick">${I('check', 16)}</i></h2><small class="ok">Recognised • 98% confidence</small><div class="frow"><label>Quantity received *<input data-bind="qty" value="${d.qty}" inputmode="decimal"></label><label>Unit *<select data-bind="unit"><option ${d.unit === 'kg' ? 'selected' : ''}>kg</option><option ${d.unit === 'pcs' ? 'selected' : ''}>pcs</option><option ${d.unit === 'pack' ? 'selected' : ''}>pack</option></select></label></div><label>Selling price *<input data-bind="price" value="${d.price}" inputmode="decimal"></label></div></div>
+    return `${top('Review stock', true)}<div class="m-body review"><div class="rv"><div class="photo">${d.name.toLowerCase().includes('tomato') ? '<img src="assets/tomato.png" alt="">' : thumb({ id: 'box', name: d.name }, 110, 20)}</div><div class="fields"><h2>${d.name} <i class="tick">${I('check', 16)}</i></h2><small class="ok">Recognised • 98% confidence</small><div class="frow"><label>Quantity received *<input data-bind="qty" value="${d.qty}" inputmode="decimal"></label><label>Unit *<select data-bind="unit"><option ${d.unit === 'kg' ? 'selected' : ''}>kg</option><option ${d.unit === 'pcs' ? 'selected' : ''}>pcs</option><option ${d.unit === 'pack' ? 'selected' : ''}>pack</option></select></label></div><label>Selling price *<input data-bind="price" value="${d.price}" inputmode="decimal"></label></div></div>
     <div class="beforeafter"><div class="ba"><small>Existing stock</small><b>${(byId(d.id) ? byId(d.id).stock : 0)} ${d.unit}</b></div>${I('arrow', 26)}<div class="ba new"><small>New stock (after adding)</small><b>${(byId(d.id) ? byId(d.id).stock : 0) + Number(d.qty || 0)} ${d.unit}</b></div></div>
     <div class="row2"><button class="outline" data-act="back">${I('edit', 22)} Edit details</button><button class="primary" data-primary data-act="savestock">${I('check', 22)} Save stock</button></div></div>${nav('stock')}`;
   },
