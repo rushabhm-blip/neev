@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEEV · Interactive prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<header class="top">
+  <div class="logo">neev</div>
+  <div class="title"><b>Interactive prototype</b><span>Counter machine · writing slate · seller phone · customer phone</span></div>
+  <div class="spacer"></div>
+  <button class="btn" id="btn-view">Reset view</button>
+  <button class="btn dark" id="btn-reset">Reset demo</button>
+</header>
+
+<main class="layout">
+  <section class="stage" id="stage">
+    <div id="three"></div>
+    <div class="hud">
+      <button class="btn pill" id="btn-slate"><span>Undock slate</span></button>
+      <span class="hint">Drag to rotate · click the keys on the machine · scroll to zoom</span>
+    </div>
+    <div class="guide closed" id="guide">
+      <button class="gh" id="guide-toggle">How to try it <i>▾</i></button>
+      <ol>
+        <li><b>Pair.</b> On the seller phone register, then enter the code shown on the machine (4821).</li>
+        <li><b>Sell.</b> Press <b>Sell</b>, tap products or press the <b>▥ Scan</b> key. Review bill, take cash, print the receipt.</li>
+        <li><b>Add stock.</b> Stock → Write on slate. Click <b>Undock slate</b>, write with the mouse, then Recognise.</li>
+        <li><b>Pickup.</b> On the customer phone request an item. Accept it on the machine (Orders), mark ready, then enter the code from the customer phone.</li>
+      </ol>
+    </div>
+  </section>
+
+  <aside class="phones">
+    <figure><div class="phone"><div class="notch"></div><div id="seller" class="p-root"></div></div><figcaption><b>Seller phone</b>Register, pair, manage the catalogue</figcaption></figure>
+    <figure><div class="phone"><div class="notch"></div><div id="customer" class="p-root"></div></div><figcaption><b>Customer phone</b>Find a shop, request a pickup</figcaption></figure>
+  </aside>
+</main>
+
+<div id="machine-screen" class="m-root"></div>
+<div id="slate-el" class="slate-dom"></div>
+<div id="toast" class="page-toast"></div>
+
+<noscript>This prototype needs JavaScript.</noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
