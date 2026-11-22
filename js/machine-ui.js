@@ -3,7 +3,12 @@ import { thumb as artThumb } from './art.js';
 const { state, money, byId, available } = S;
 
 // Machine UI state (screen routing + inputs). Business data lives in store.js.
-const m = { screen: 'setup', cash: '', pay: 'cash', order: null, code: '', draft: null, mode: 'write', toast: '' };
+const m = { screen: 'setup', cash: '', pay: 'cash', order: null, code: '', draft: null, mode: 'speak', toast: '', heard: '', stage: '', from: 'home', sale: null, wItem: 'tomatoes' };
+let timers = [];
+const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+function speak(txt) { try { if (!window.speechSynthesis) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(txt); u.lang = 'en-IN'; u.rate = 0.95; speechSynthesis.speak(u); } catch (e) { /* speech is optional */ } }
+// Two sample voice entries the demo understands (speech recognition itself is simulated).
+const PHRASES = ['I have 30 kg of tomatoes', '2 kg potatoes sold'];
 let root;
 
 const icon = (n) => ({
@@ -27,10 +32,12 @@ const icon = (n) => ({
   bag: '<path d="M6 8h12l1 12H5zM9 8a3 3 0 0 1 6 0"/>',
   phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  weigh: '<path d="M4 8h16l-1.5 12h-13zM8 8a4 4 0 0 1 8 0M12 12.5l2-2.5"/>',
+  speaker: '<path d="M4 9v6h4l5 4V5L8 9zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
 }[n] || '');
 const I = (n, s = 22) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon(n)}</svg>`;
 const thumb = (p, size = 64) => artThumb(p, size, Math.max(8, size * 0.16));
-const nav = (a) => `<nav class="m-nav">${[['home', 'Home', 'home'], ['sell', 'Sell', 'cart'], ['stock', 'Stock', 'box'], ['orders', 'Orders', 'list']].map(([k, l, ic]) => `<button data-act="go" data-to="${k}" class="${a === k ? 'on' : ''}">${I(ic, 22)}<span>${l}</span></button>`).join('')}</nav>`;
+const nav = (a) => `<nav class="m-nav">${[['home', 'Home', 'home'], ['sell', 'Sell', 'cart'], ['weigh', 'Weigh', 'weigh'], ['stock', 'Stock', 'box'], ['orders', 'Orders', 'list']].map(([k, l, ic]) => `<button data-act="go" data-to="${k}" class="${a === k ? 'on' : ''}">${I(ic, 22)}<span>${l}</span>${k === 'orders' && pendingCount() ? `<em class="nb">${pendingCount()}</em>` : ''}</button>`).join('')}</nav>`;
 const top = (title, back) => `<header class="m-top"><div class="brand">neev</div><div class="shop">${I('store', 18)} ${state.shop.name}</div><div class="spacer"></div>${state.conditions.alert && !state.conditions.snoozed ? `<button class="chipbtn warn" data-act="go" data-to="cond">${I('warn', 16)} Alert</button>` : ''}<span class="wifi">${I('wifi', 20)}</span><span class="clock">10:24</span></header>${title ? `<div class="m-title">${back ? `<button class="back" data-act="back">${I('back', 24)}</button>` : ''}<h2>${title}</h2></div>` : ''}`;
 const pendingCount = () => state.orders.filter((o) => o.status === 'pending').length;
 
@@ -43,9 +50,9 @@ const screens = {
   home() {
     const draft = state.cart.length;
     return `${top()}<div class="m-body"><div class="hello"><div><h1>Good morning!</h1><span class="muted">${state.shop.name} · Counter ready</span></div><button class="alertbtn" data-act="go" data-to="cond">${I('bell', 24)}<small>Alerts</small>${state.conditions.alert && !state.conditions.snoozed ? '<i></i>' : ''}</button></div>
-    <div class="tiles"><button class="tile hero" data-primary data-act="go" data-to="sell">${I('cart', 54)}<b>${draft ? 'Continue sale' : 'New sale'}</b><span>${draft ? `Saved bill · ${draft} item${draft > 1 ? 's' : ''} · ${money(S.cartTotal())}` : 'Bill and collect payment'}</span></button>
-    <button class="tile" data-act="go" data-to="stock">${I('box', 40)}<b>Add stock</b><span>Receive new items</span></button>
-    <button class="tile" data-act="go" data-to="orders">${I('list', 40)}<b>Orders</b><span>Pickup requests</span>${pendingCount() ? `<em>${pendingCount()}</em>` : ''}</button></div>
+    <div class="tiles"><button class="tile hero mic" data-act="listen">${I('mic', 54)}<b>Press Mic and speak</b><span>Say stock in or a sale. Or press the Mic key.</span></button>
+    <button class="tile" data-primary data-act="go" data-to="sell">${I('cart', 40)}<b>${draft ? 'Continue sale' : 'New sale'}</b><span>${draft ? `${draft} item${draft > 1 ? 's' : ''} · ${money(S.cartTotal())}` : 'Bill and collect'}</span></button>
+    <button class="tile" data-act="go" data-to="weigh">${I('weigh', 40)}<b>Weigh</b><span>Use the base</span></button></div>
     <h3>Quick items</h3><div class="quick">${['tea', 'rice', 'potato'].map((id) => { const p = byId(id); return `<button class="qi" data-act="add" data-id="${id}">${thumb(p, 54)}<div><b>${p.name}</b><span>${money(p.price)}</span></div><i>+ Add</i></button>`; }).join('')}</div></div>${nav('home')}`;
   },
   sell() {
@@ -53,7 +60,7 @@ const screens = {
     const grid = state.products.filter((p) => p.published || p.stock > 0).slice(0, 6);
     return `${top('New sale', true)}<div class="m-body split"><div class="grid3">${grid.map((p) => `<button class="prod ${available(p) <= 0 ? 'out' : ''}" data-act="add" data-id="${p.id}">${thumb(p, 78)}<b>${p.name}</b><span>${money(p.price)}</span><small>${available(p) <= 0 ? 'Out of stock' : available(p) + ' ' + (p.unit === 'kg' ? 'kg' : 'left')}</small></button>`).join('')}</div>
     <aside class="cart"><div class="row"><b>Cart</b><span class="muted">(${state.cart.length} item${state.cart.length === 1 ? '' : 's'})</span><button class="link" data-act="clear">Clear</button></div>
-    <div class="lines">${state.cart.length ? state.cart.map((l) => { const p = byId(l.id); return `<div class="line">${thumb(p, 44)}<div class="ln"><b>${p.name}</b><span>${money(p.price)} each</span><div class="qty"><button data-act="dec" data-id="${l.id}">–</button><i>${l.qty}</i><button data-act="inc" data-id="${l.id}">+</button></div></div><b class="amt">${money(p.price * l.qty)}</b></div>`; }).join('') : `<div class="empty">${I('scan', 34)}<span>Tap a product, or press the <b>Scan</b> key</span></div>`}</div>
+    <div class="lines">${state.cart.length ? state.cart.map((l) => { const p = byId(l.id); return `<div class="line">${thumb(p, 44)}<div class="ln"><b>${p.name}</b><span>${l.weighed ? `${l.qty} kg · ${money(p.price)}/kg` : `${money(p.price)} each`}</span>${l.weighed ? '' : `<div class="qty"><button data-act="dec" data-id="${l.id}">–</button><i>${l.qty}</i><button data-act="inc" data-id="${l.id}">+</button></div>`}</div><b class="amt">${money(S.lineAmt(l))}</b></div>`; }).join('') : `<div class="empty">${I('scan', 34)}<span>Tap a product, or press the <b>Scan</b> key</span></div>`}</div>
     <div class="total"><span>Total</span><b>${money(total)}</b></div><button class="primary wide" data-primary data-act="pay" ${state.cart.length ? '' : 'disabled'}>Review bill ${I('arrow', 22)}</button></aside></div>${nav('sell')}`;
   },
   pay() {
@@ -61,7 +68,7 @@ const screens = {
     const cash = m.cash === '' ? total : Number(m.cash);
     const change = Math.max(0, cash - total);
     const enough = m.pay === 'upi' || cash >= total;
-    return `${top('Payment', true)}<div class="m-body split pay"><section class="card"><b>Items (${state.cart.length})</b>${state.cart.map((l) => { const p = byId(l.id); return `<div class="line">${thumb(p, 44)}<div class="ln"><b>${p.name}</b><span>${l.qty} × ${money(p.price)}</span></div><b class="amt">${money(p.price * l.qty)}</b></div>`; }).join('')}<div class="sub"><span>Subtotal</span><span>${money(total)}</span></div><div class="grand"><span>Total</span><b>${money(total)}</b></div></section>
+    return `${top('Payment', true)}<div class="m-body split pay"><section class="card"><b>Items (${state.cart.length})</b>${state.cart.map((l) => { const p = byId(l.id); return `<div class="line">${thumb(p, 44)}<div class="ln"><b>${p.name}</b><span>${l.weighed ? `${l.qty} kg × ${money(p.price)}/kg` : `${l.qty} × ${money(p.price)}`}</span></div><b class="amt">${money(S.lineAmt(l))}</b></div>`; }).join('')}<div class="sub"><span>Subtotal</span><span>${money(total)}</span></div><div class="grand"><span>Total</span><b>${money(total)}</b></div></section>
     <section class="card"><b>Payment method</b><div class="seg"><button class="${m.pay === 'cash' ? 'on' : ''}" data-act="paym" data-m="cash">Cash</button><button class="${m.pay === 'upi' ? 'on' : ''}" data-act="paym" data-m="upi">UPI</button></div>
     ${m.pay === 'cash' ? `<label>Cash received</label><div class="field big">${money(cash)}</div><div class="keys">${['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '00', '⌫'].map((k) => `<button data-act="key" data-k="${k}">${k}</button>`).join('')}<div class="change"><small>Change</small><b>${money(change)}</b></div></div>` : `<div class="upi">${I('phone', 40)}<b>Ask the customer to scan the UPI code</b><span class="muted">Payment stays pending until the provider confirms. (Demo provider)</span></div>`}
     <button class="primary wide" data-primary data-act="confirm" ${enough ? '' : 'disabled'}>${I('check', 22)} ${m.pay === 'cash' ? 'Confirm cash sale' : 'Provider confirmed'}</button></section></div>${nav('sell')}`;
@@ -71,24 +78,45 @@ const screens = {
     if (!s) return screens.home();
     const first = s.items[0];
     return `${top()}<div class="m-body done"><div class="okc">${I('check', 44)}</div><h1>Sale complete</h1><div class="pill">${money(s.total)} paid in ${s.method === 'cash' ? 'cash' : 'UPI'}</div>
-    <div class="split2"><div class="receipt"><div class="rh"><b>${state.shop.name}</b><span>#${s.no}</span></div><small>${s.when.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</small><hr>${s.items.map((l) => `<div class="rl"><span>${l.name}<br><small>${l.qty} × ${money(l.price)}</small></span><b>${money(l.price * l.qty)}</b></div>`).join('')}<hr><div class="rl"><b>Total</b><b>${money(s.total)}</b></div><div class="rl"><span>Payment</span><span>${s.method === 'cash' ? 'Cash' : 'UPI'}</span></div></div>
+    <div class="split2"><div class="receipt"><div class="rh"><b>${state.shop.name}</b><span>#${s.no}</span></div><small>${s.when.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</small><hr>${s.items.map((l) => `<div class="rl"><span>${l.name}<br><small>${l.weighed ? `${l.qty} kg × ${money(l.price)}/kg` : `${l.qty} × ${money(l.price)}`}</small></span><b>${money(Math.round(l.price * l.qty))}</b></div>`).join('')}<hr><div class="rl"><b>Total</b><b>${money(s.total)}</b></div><div class="rl"><span>Payment</span><span>${s.method === 'cash' ? 'Cash' : 'UPI'}</span></div></div>
     <div class="acts"><div class="stockpill">${I('box', 26)} Stock <b>${s.stock[first.id]} → ${s.stock[first.id] - first.qty}</b></div><button class="outline" data-act="print">${I('printer', 22)} Print receipt</button><button class="primary wide" data-primary data-act="next">Next customer ${I('arrow', 22)}</button></div></div></div>${nav('sell')}`;
   },
   stock() {
-    return `${top('Add stock', true)}<div class="m-body"><h3>How do you want to add stock?</h3><div class="modes">${[['write', 'edit', 'Write on slate', 'Write item, quantity and price'], ['speak', 'mic', 'Speak', 'Say the item, quantity and price'], ['scan', 'scan', 'Scan barcode', "Use a product's barcode"]].map(([k, ic, t, d]) => `<button class="mode ${m.mode === k ? 'on' : ''}" data-act="mode" data-m="${k}">${I(ic, 44)}<b>${t}</b><span>${d}</span></button>`).join('')}</div>
+    return `${top('Add stock', true)}<div class="m-body"><h3>How do you want to add stock?</h3><div class="modes">${[['speak', 'mic', 'Speak', 'Say the item, quantity and price'], ['scan', 'scan', 'Scan barcode', "Use a product's barcode"], ['type', 'edit', 'Type', 'Fill the form with the stylus']].map(([k, ic, t, d]) => `<button class="mode ${m.mode === k ? 'on' : ''}" data-act="mode" data-m="${k}">${I(ic, 44)}<b>${t}</b><span>${d}</span></button>`).join('')}</div>
     <button class="primary wide" data-primary data-act="startadd">Continue ${I('arrow', 22)}</button>
     <h3>Recently used products</h3><div class="quick">${['onion', 'tea', 'potato'].map((id) => { const p = byId(id); return `<div class="qi">${thumb(p, 54)}<div><b>${p.name}</b><span>On hand ${p.stock}</span></div></div>`; }).join('')}</div></div>${nav('stock')}`;
   },
-  write() {
-    const docked = state.slate.docked;
-    return `${top('Write on slate', true)}<div class="m-body write"><div class="slatecard">${docked ? `<div class="hint">${I('edit', 44)}<b>The slate is docked under the machine</b><span>Use <b>Undock slate</b> below the machine to slide it out, then write with the stylus.</span></div>` : `<div class="hint ok">${I('check', 44)}<b>Slate connected</b><span>${state.slate.strokes ? `${state.slate.strokes} stroke${state.slate.strokes > 1 ? 's' : ''} captured.` : 'Write on the slate in front of the machine. Try: “Tomatoes, 30 kg, ₹40 per kg”.'}</span></div>`}</div>
-    <div class="side"><div class="pill soft">${docked ? 'Slate docked' : 'Slate connected'}</div><button class="primary wide" data-primary data-act="recog">${I('edit', 22)} Recognise writing</button><button class="outline wide" data-act="speakdemo">${I('mic', 22)} Or speak instead</button><small class="muted">Prototype: recognition is simulated. It returns the sample entry for any writing.</small></div></div>${nav('stock')}`;
+  listen() {
+    const live = m.stage === 'listening', think = m.stage === 'thinking';
+    return `${top('', false)}<div class="m-body listen"><div class="langchip">EN · English</div>
+    <div class="micring ${live ? 'live' : ''}"><span class="r1"></span><span class="r2"></span><div class="mc">${I('mic', 64)}</div></div>
+    <div class="wave ${live ? 'live' : ''}">${Array.from({ length: 21 }, (_, i) => `<i style="animation-delay:${(i * 0.07).toFixed(2)}s"></i>`).join('')}</div>
+    <div class="heard">${m.heard ? `“${m.heard}”` : (live ? 'Say the item and quantity…' : '')}${think ? ' <span class="dots"><i></i><i></i><i></i></span>' : ''}</div>
+    <div class="try"><small>Try saying (demo)</small><div>${PHRASES.map((p, i) => `<button data-act="say" data-i="${i}">“${p}”</button>`).join('')}</div></div>
+    <small class="muted">Press Mic again to start over. Nothing is saved until you confirm.</small></div>${nav('')}`;
+  },
+  salerb() {
+    const s = m.sale; const p = s && byId(s.id); if (!p) return screens.home();
+    const amt = Math.round(p.price * s.qty), after = Math.round((p.stock - s.qty) * 100) / 100;
+    return `${top('Confirm sale', true)}<div class="m-body review"><div class="rv"><div class="photo">${thumb(p, 110)}</div><div class="fields"><h2>${p.name}</h2><small class="ok">${I('speaker', 15)} “${p.name}, sold ${s.qty} kg, ${money(amt)}. Stock ${p.stock} to ${after}. Confirm?”</small>
+    <div class="frow"><div class="stat"><small>Quantity</small><b>${s.qty} kg</b></div><div class="stat ok"><small>Amount</small><b>${money(amt)}</b></div></div></div></div>
+    <div class="beforeafter"><div class="ba"><small>Stock now</small><b>${p.stock} kg</b></div>${I('arrow', 26)}<div class="ba new"><small>After this sale</small><b>${after} kg</b></div></div>
+    <div class="row2"><button class="outline" data-act="listen">${I('mic', 22)} Say again</button><button class="primary" data-primary data-act="confirmsale">${I('check', 22)} Confirm sale</button></div></div>${nav('sell')}`;
+  },
+  weigh() {
+    const b = state.base, net = S.baseNet(), gross = S.baseGross();
+    const items = ['tomatoes', 'onion', 'potato'].map(byId).filter(Boolean);
+    const p = byId(m.wItem) || items[0];
+    const note = b.docked ? 'The machine is sitting on the base. Lift it off to weigh.' : !gross ? 'Place the bowl on the base.' : (net === 0 ? 'Bowl detected. Press Tare, then add the goods.' : 'Stable');
+    return `${top('Weigh', true)}<div class="m-body split weigh"><section class="card wcard"><small class="muted">${b.docked ? 'Base docked' : 'Base connected · Bluetooth'}</small><div class="wt">${b.docked ? '—' : net.toFixed(2)}<small> kg</small></div><div class="wnote ${!b.docked && net > 0 ? 'ok' : ''}">${note}</div><button class="outline wide" data-act="tare" ${b.docked || !gross ? 'disabled' : ''}>${I('weigh', 22)} Tare</button><small class="muted">Use the buttons above the machine to lift it off and place goods.</small></section>
+    <section class="card"><b>Item</b><div class="wi">${items.map((x) => `<button class="${x.id === p.id ? 'on' : ''}" data-act="witem" data-id="${x.id}">${thumb(x, 40)}<span>${x.name}</span><small>${money(x.price)}/kg</small></button>`).join('')}</div>
+    <div class="grand"><span>${net.toFixed(2)} kg × ${money(p.price)}</span><b>${money(Math.round(net * p.price))}</b></div><button class="primary wide" data-primary data-act="addweighed" ${b.docked || net <= 0 ? 'disabled' : ''}>${I('plus', 22)} Add to bill</button></section></div>${nav('weigh')}`;
   },
   review() {
     const d = m.draft;
-    return `${top('Review stock', true)}<div class="m-body review"><div class="rv"><div class="photo">${d.name.toLowerCase().includes('tomato') ? '<img src="assets/tomato.png" alt="">' : thumb({ id: 'box', name: d.name }, 110, 20)}</div><div class="fields"><h2>${d.name} <i class="tick">${I('check', 16)}</i></h2><small class="ok">Recognised • 98% confidence</small><div class="frow"><label>Quantity received *<input data-bind="qty" value="${d.qty}" inputmode="decimal"></label><label>Unit *<select data-bind="unit"><option ${d.unit === 'kg' ? 'selected' : ''}>kg</option><option ${d.unit === 'pcs' ? 'selected' : ''}>pcs</option><option ${d.unit === 'pack' ? 'selected' : ''}>pack</option></select></label></div><label>Selling price *<input data-bind="price" value="${d.price}" inputmode="decimal"></label></div></div>
+    return `${top('Review stock', true)}<div class="m-body review"><div class="rv"><div class="photo">${d.name.toLowerCase().includes('tomato') ? '<img src="assets/tomato.png" alt="">' : thumb({ id: 'box', name: d.name }, 110, 20)}</div><div class="fields"><h2>${d.name} <i class="tick">${I('check', 16)}</i></h2><small class="ok">${I('speaker', 15)} “${d.name}, add ${d.qty || 0} ${d.unit}. Stock will be ${(byId(d.id) ? byId(d.id).stock : 0) + Number(d.qty || 0)} ${d.unit}. Confirm?”</small><div class="frow"><label>Quantity received *<input data-bind="qty" value="${d.qty}" inputmode="decimal"></label><label>Unit *<select data-bind="unit"><option ${d.unit === 'kg' ? 'selected' : ''}>kg</option><option ${d.unit === 'pcs' ? 'selected' : ''}>pcs</option><option ${d.unit === 'pack' ? 'selected' : ''}>pack</option></select></label></div><label>Selling price *<input data-bind="price" value="${d.price}" inputmode="decimal"></label></div></div>
     <div class="beforeafter"><div class="ba"><small>Existing stock</small><b>${(byId(d.id) ? byId(d.id).stock : 0)} ${d.unit}</b></div>${I('arrow', 26)}<div class="ba new"><small>New stock (after adding)</small><b>${(byId(d.id) ? byId(d.id).stock : 0) + Number(d.qty || 0)} ${d.unit}</b></div></div>
-    <div class="row2"><button class="outline" data-act="back">${I('edit', 22)} Edit details</button><button class="primary" data-primary data-act="savestock">${I('check', 22)} Save stock</button></div></div>${nav('stock')}`;
+    <div class="row2"><button class="outline" data-act="listen">${I('mic', 22)} Say again</button><button class="primary" data-primary data-act="savestock">${I('check', 22)} Confirm and save</button></div></div>${nav('stock')}`;
   },
   saved() {
     const ls = state.lastStock; const p = ls && byId(ls.id);
@@ -133,8 +161,29 @@ function nav2(s) { history.push(m.screen); go(s); }
 const dest = { home: 'home', sell: 'sell', stock: 'stock', orders: 'orders', cond: 'cond' };
 
 const actions = {
-  go: (d) => { history.length = 0; go(dest[d.to] || d.to); },
-  back: () => { const t = m.screen; if (t === 'review') return go('write'); if (t === 'pay') return go('sell'); if (t === 'order') return go('orders'); go(history.pop() || (['write', 'saved'].includes(t) ? 'stock' : 'home')); },
+  go: (d) => { clearTimers(); S.hooks.listening(false); m.stage = ''; history.length = 0; go(dest[d.to] || d.to); },
+  back: () => { const t = m.screen; clearTimers(); S.hooks.listening(false); if (t === 'review') return go('stock'); if (t === 'salerb' || t === 'weigh') return go('home'); if (t === 'pay') return go('sell'); if (t === 'order') return go('orders'); go(history.pop() || (t === 'saved' ? 'stock' : 'home')); },
+  // ---- voice (simulated recognition): Mic -> listening -> heard text -> read-back -> Confirm
+  listen: () => {
+    clearTimers(); if (m.screen !== 'listen') m.from = m.screen;
+    m.screen = 'listen'; m.heard = ''; m.stage = 'listening'; S.hooks.listening(true); S.hooks.beep('scan'); render();
+    timers.push(setTimeout(() => actions.say({ i: m.from === 'sell' || m.from === 'weigh' || m.from === 'pay' ? 1 : 0 }), 2800));
+  },
+  say: (d) => {
+    clearTimers(); const i = Number(d.i); const words = PHRASES[i].split(' '); m.screen = 'listen'; m.stage = 'listening'; m.heard = ''; S.hooks.listening(true); render();
+    words.forEach((w, k) => timers.push(setTimeout(() => { m.heard = words.slice(0, k + 1).join(' '); render(); }, 220 * (k + 1))));
+    timers.push(setTimeout(() => { m.stage = 'thinking'; render(); }, 220 * words.length + 250));
+    timers.push(setTimeout(() => {
+      S.hooks.listening(false); m.stage = '';
+      if (i === 0) { actions.draftFrom({ id: 'tomatoes', name: 'Tomatoes', qty: '30', unit: 'kg', price: '40' }); const d0 = m.draft; speak(`${d0.name}, add ${d0.qty} ${d0.unit}. Confirm?`); }
+      else { m.sale = { id: 'potato', qty: 2 }; go('salerb'); speak('Potatoes, sold 2 kilos, 56 rupees. Confirm?'); }
+    }, 220 * words.length + 900));
+  },
+  draftFrom: (d) => { m.draft = { ...d }; if (!byId(d.id)) S.state.products.push({ id: d.id, name: d.name, unit: d.unit, price: Number(d.price) || 0, stock: 0, reserved: 0, emoji: '📦', published: false }); go('review'); },
+  confirmsale: () => { const s = m.sale; if (s && S.addWeighed(s.id, s.qty)) { m.sale = null; go('pay'); } },
+  tare: () => { if (!S.baseGross()) return toast('Place the bowl on the base first.'); S.tare(); toast('Scale set to zero'); },
+  witem: (d) => { m.wItem = d.id; render(); },
+  addweighed: () => { const net = S.baseNet(); if (S.addWeighed(m.wItem, net)) { toast(`Added ${net.toFixed(2)} kg to the bill`); go('sell'); } },
   'skip-setup': () => { state.shop.paired = true; S.emit(); go('home'); },
   add: (d) => S.addToCart(d.id), inc: (d) => S.setQty(d.id, state.cart.find((l) => l.id === d.id).qty + 1), dec: (d) => S.setQty(d.id, state.cart.find((l) => l.id === d.id).qty - 1), clear: () => S.clearCart(),
   pay: () => { m.cash = ''; m.pay = 'cash'; go('pay'); },
@@ -144,10 +193,12 @@ const actions = {
   print: () => { S.hooks.print(state.lastSale); toast('Printing receipt…'); },
   next: () => go('sell'),
   mode: (d) => { m.mode = d.m; render(); },
-  startadd: () => { if (m.mode === 'write') go('write'); else { toast(m.mode === 'speak' ? 'Listening… (demo) heard “Tomatoes 30 kilos 40 rupees”' : 'Scanned a barcode (demo) → Tomatoes'); actions.recog(true); } },
-  recog: (force) => { if (force !== true) { if (state.slate.docked) return toast('Slide the slate out first, then write on it.'); if (!state.slate.strokes) return toast('Write something on the slate first.'); } m.draft = { id: 'tomatoes', name: 'Tomatoes', qty: '30', unit: 'kg', price: '40' }; if (!byId('tomatoes')) S.state.products.push({ id: 'tomatoes', name: 'Tomatoes', unit: 'kg', price: 40, stock: 0, reserved: 0, emoji: '🍅', img: 'assets/tomato.png', published: false }); go('review'); },
-  speakdemo: () => actions.recog(true),
-  savestock: () => { const d = m.draft; const qty = Number(d.qty); const price = Number(d.price); if (!(qty > 0) || !(price > 0)) return toast('Enter a quantity and a price.'); S.receiveStock({ name: d.name, qty, unit: d.unit, price }); S.setSlate({ strokes: 0 }); go('saved'); },
+  startadd: () => {
+    if (m.mode === 'speak') return actions.listen();
+    if (m.mode === 'scan') { toast('Scanned a barcode (demo): Tomatoes'); return actions.draftFrom({ id: 'tomatoes', name: 'Tomatoes', qty: '30', unit: 'kg', price: '40' }); }
+    actions.draftFrom({ id: 'tomatoes', name: 'Tomatoes', qty: '', unit: 'kg', price: '40' });   // type with the stylus
+  },
+  savestock: () => { const d = m.draft; const qty = Number(d.qty); const price = Number(d.price); if (!(qty > 0) || !(price > 0)) return toast('Enter a quantity and a price.'); S.receiveStock({ name: d.name, qty, unit: d.unit, price }); go('saved'); },
   createlisting: () => { const id = state.lastStock.id; if (!byId(id).published) { S.publish(id, true); toast('Listed. Customers nearby can find it.'); } else toast('Already listed.'); },
   addmore: () => go('stock'),
   open: (d) => { m.order = d.id; m.code = ''; go('order'); },
@@ -167,13 +218,14 @@ export function mountMachine(el) {
   m.screen = state.shop.paired ? 'home' : 'setup';
   render();
 }
-export const machineReset = () => { Object.assign(m, { screen: 'setup', cash: '', pay: 'cash', order: null, code: '', draft: null, mode: 'write', toast: '' }); render(); };
+export const machineReset = () => { clearTimers(); Object.assign(m, { screen: 'setup', cash: '', pay: 'cash', order: null, code: '', draft: null, mode: 'speak', toast: '', heard: '', stage: '', sale: null, wItem: 'tomatoes' }); render(); };
 
-// Hardware keys
+// Hardware keys: Confirm, Scan, Mic (and Tare on the weighing base). There is no Back key.
 const scanOrder = ['tea', 'rice', 'milk', 'potato'];
 let scanI = 0;
 export function press(key) {
-  if (key === 'back') return actions.back();
+  if (key === 'mic') return actions.listen();                 // press again while listening to start over
+  if (key === 'tare') return actions.tare();
   if (key === 'ok') { const b = root.querySelector('[data-primary]:not([disabled])'); if (b) b.click(); else S.hooks.beep('error'); return; }
   if (key === 'scan') {
     if (m.screen === 'sell' || m.screen === 'home') { if (m.screen === 'home') go('sell'); S.addToCart(scanOrder[scanI++ % scanOrder.length]); }

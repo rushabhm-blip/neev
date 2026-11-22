@@ -11,7 +11,7 @@ const fresh = () => ({
     { id: 'milk', name: 'Milk 1 L', unit: 'pack', price: 56, stock: 18, reserved: 0, emoji: '🥛', published: true },
     { id: 'onion', name: 'Onions', unit: 'kg', price: 32, stock: 20, reserved: 0, emoji: '🧅', published: true },
     { id: 'potato', name: 'Potatoes', unit: 'kg', price: 28, stock: 25, reserved: 0, emoji: '🥔', published: true },
-    { id: 'tomatoes', name: 'Tomatoes', unit: 'kg', price: 40, stock: 0, reserved: 0, img: 'assets/tomato.png', published: false },
+    { id: 'tomatoes', name: 'Tomatoes', unit: 'kg', price: 40, stock: 12, reserved: 0, img: 'assets/tomato.png', published: false },
     { id: 'shirt', name: 'Blue cotton shirt', unit: 'pcs', price: 650, stock: 6, reserved: 0, img: 'assets/shirt.png', published: true },
     { id: 'rose', name: 'Rose bouquet', unit: 'pcs', price: 350, stock: 4, reserved: 0, img: 'assets/rose.png', published: false },
     { id: 'dupatta', name: 'Printed dupatta', unit: 'pcs', price: 350, stock: 15, reserved: 0, img: 'assets/dupatta.png', published: true },
@@ -22,7 +22,7 @@ const fresh = () => ({
   lastSale: null,
   lastStock: null,
   conditions: { air: 31, hum: 62, surface: 29, limit: 32, alert: false, snoozed: false },
-  slate: { docked: true, strokes: 0 },
+  base: { docked: true, goods: 0, tare: 0 },   // goods: 0 none, 1 empty bowl, 2 bowl with tomatoes
   seq: { order: 1042, receipt: 1042 },
 });
 
@@ -32,10 +32,11 @@ export const reset = () => { Object.assign(state, fresh()); emit(); };
 export const byId = (id) => state.products.find((p) => p.id === id);
 export const available = (p) => p.stock - p.reserved;
 export const money = (n) => '₹' + Number(n).toLocaleString('en-IN');
-export const cartTotal = () => state.cart.reduce((s, l) => s + byId(l.id).price * l.qty, 0);
+export const lineAmt = (l) => Math.round(byId(l.id).price * l.qty);
+export const cartTotal = () => state.cart.reduce((s, l) => s + lineAmt(l), 0);
 
 // ---- toasts + beep (UI hooks set by main.js)
-export const hooks = { toast: () => {}, beep: () => {}, print: () => {} };
+export const hooks = { toast: () => {}, beep: () => {}, print: () => {}, listening: () => {} };
 
 // ---- selling
 export function addToCart(id) {
@@ -63,7 +64,7 @@ export function completeSale(method, cashIn) {
   for (const l of state.cart) { if (l.qty > available(byId(l.id))) { hooks.toast('Stock changed. Check the bill.'); return false; } }
   const items = state.cart.map((l) => ({ ...l, name: byId(l.id).name, price: byId(l.id).price }));
   const before = {};
-  for (const l of state.cart) { const p = byId(l.id); before[l.id] = p.stock; p.stock -= l.qty; }  // deduct exactly once
+  for (const l of state.cart) { const p = byId(l.id); before[l.id] = p.stock; p.stock = Math.round((p.stock - l.qty) * 100) / 100; }  // deduct exactly once
   const sale = { no: 'N' + state.seq.receipt++, items, total, method, cashIn: cashIn ?? total, when: new Date(), stock: before };
   state.receipts.push(sale);
   state.lastSale = sale;
@@ -132,4 +133,18 @@ export function pairMachine(code) {
   return false;
 }
 export function setConditions(patch) { Object.assign(state.conditions, patch); emit(); }
-export function setSlate(patch) { Object.assign(state.slate, patch); emit(); }
+
+// ---- weighing base
+// Gross weight on the tray (kg): nothing, empty bowl, bowl with tomatoes. Zero while the machine sits on the base.
+export const baseGross = () => (state.base.docked ? 0 : [0, 0.45, 1.65][state.base.goods] || 0);
+export const baseNet = () => Math.max(0, Math.round((baseGross() - state.base.tare) * 100) / 100);
+export function setBase(patch) { Object.assign(state.base, patch); emit(); }
+export function tare() { state.base.tare = baseGross(); hooks.beep('ok'); emit(); }
+// Add a weighed line (quantity is kilograms) to the bill.
+export function addWeighed(id, kg) {
+  const p = byId(id); if (!p || !(kg > 0)) return false;
+  const line = state.cart.find((l) => l.id === id);
+  if ((line ? line.qty : 0) + kg > available(p) + 1e-9) { hooks.toast(`Only ${available(p)} kg available for ${p.name}`); hooks.beep('error'); return false; }
+  if (line) line.qty = Math.round((line.qty + kg) * 100) / 100; else state.cart.push({ id, qty: kg, weighed: true });
+  hooks.beep('ok'); emit(); return true;
+}

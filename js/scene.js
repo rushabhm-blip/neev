@@ -6,7 +6,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const BLUE = 0x6c86ae, BLUE_D = 0x4d6489, WHITE = 0xf3f5f9, INK = 0x151c28;
 
-export function initScene({ container, screenEl, slateEl, onKey }) {
+export function initScene({ container, screenEl, onKey }) {
   const w0 = container.clientWidth, h0 = container.clientHeight;
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -89,14 +89,26 @@ export function initScene({ container, screenEl, slateEl, onKey }) {
 
   // ---- hardware keys on the ledge
   const keyMeshes = [];
-  const glyph = (txt) => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); g.fillStyle = '#1b2433'; g.font = 'bold 84px Inter, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 64, 70); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
-  [['back', '↩', -0.62], ['ok', '✓', 0], ['scan', '▥', 0.62]].forEach(([k, ch, x]) => {
+  const glyph = (txt) => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); g.fillStyle = '#1b2433'; g.strokeStyle = '#1b2433'; g.lineCap = 'round'; g.lineJoin = 'round';
+    if (txt === 'mic') { g.lineWidth = 9; g.beginPath(); g.roundRect(48, 18, 32, 56, 16); g.fill(); g.beginPath(); g.arc(64, 62, 30, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke(); g.beginPath(); g.moveTo(64, 94); g.lineTo(64, 112); g.stroke(); }
+    else { g.font = 'bold 84px Inter, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 64, 70); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
+  let micKey = null, listening = false;
+  // three keys: Confirm, Scan, Mic. There is no Back key (Mic again redoes a voice entry).
+  [['ok', '✓', -0.62], ['scan', '▥', 0], ['mic', 'mic', 0.62]].forEach(([k, ch, x]) => {
     const g = new THREE.Group(); g.position.set(x, 0.835, 1.0); g.rotation.x = 0.3;
-    const keyM = mat(WHITE, 0.35, 0.02);
+    const keyM = mat(k === 'mic' ? 0xe6eeff : WHITE, 0.35, 0.02);
     const key = new THREE.Mesh(new RoundedBoxGeometry(0.46, 0.09, 0.3, 4, 0.04), keyM); key.userData.key = k; key.userData.base = keyM;
     const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), new THREE.MeshBasicMaterial({ map: glyph(ch), transparent: true })); lab.rotation.x = -Math.PI / 2; lab.position.y = 0.046;
-    g.add(key, lab); machine.add(g); keyMeshes.push(key);
+    g.add(key, lab); machine.add(g); keyMeshes.push(key); if (k === 'mic') micKey = key;
   });
+  // stylus on a tether, parked on the right side
+  const stylusG = new THREE.Group(); stylusG.position.set(1.235, 1.2, -0.1);
+  stylusG.add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.72, 20), mat(0xf4f6fa, 0.4)));
+  const sTip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 20), mat(0x2b3445, 0.4)); sTip.position.y = -0.41; sTip.rotation.x = Math.PI; stylusG.add(sTip);
+  const sBand = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.05, 20), mat(BLUE_D, 0.4)); sBand.position.y = 0.2; stylusG.add(sBand);
+  machine.add(stylusG);
+  const tether = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(1.235, 0.84, -0.1), new THREE.Vector3(1.3, 0.68, 0.02), new THREE.Vector3(1.27, 0.5, 0.35)]), 24, 0.007, 8), mat(0x1c2230, 0.6)); machine.add(tether);
 
   // ---- printer slot + paper, scanner window, speaker, feet
   const slot = new THREE.Mesh(new RoundedBoxGeometry(0.86, 0.13, 0.06, 3, 0.03), mat(INK, 0.4)); slot.position.set(-0.55, 0.42, 1.27); machine.add(slot);
@@ -114,23 +126,40 @@ export function initScene({ container, screenEl, slateEl, onKey }) {
   logo.position.set(0, 0.2, 1.285); machine.add(logo);
   shadowed(machine);
 
-  // ---- writing slate (moves out under the machine)
-  const slate = new THREE.Group(); slate.position.set(0, 0.07, 0); scene.add(slate);
-  const slateBody = new THREE.Mesh(new RoundedBoxGeometry(2.7, 0.12, 2.7, 4, 0.05), mat(0xe9edf3, 0.55, 0.02)); slateBody.position.set(0, 0, 0.15); slate.add(slateBody);
-  const surface = new THREE.Mesh(new THREE.PlaneGeometry(2.55, 2.35), mat(0xfbfbf4, 0.9)); surface.rotation.x = -Math.PI / 2; surface.position.set(0, 0.062, 0.12); slate.add(surface);
-  const stylus = new THREE.Group();
-  const sBody = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.9, 20), mat(0xf7f7f9, 0.4)); sBody.rotation.z = Math.PI / 2;
-  const sTip = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.12, 20), mat(0x2b3445, 0.4)); sTip.rotation.z = Math.PI / 2; sTip.position.x = 0.5;
-  const sClip = new THREE.Mesh(new RoundedBoxGeometry(0.2, 0.05, 0.08, 2, 0.02), mat(BLUE_D, 0.4)); sClip.position.set(-0.15, 0.04, 0);
-  stylus.add(sBody, sTip, sClip); stylus.position.set(0.35, 0.1, 1.38); slate.add(shadowed(stylus));
-  shadowed(slateBody);
-  const slateObj = new CSS3DObject(slateEl);
-  slateObj.scale.setScalar(1 / 400);
-  slateObj.position.set(0, 0.07, 0.12); slateObj.rotation.x = -Math.PI / 2;
-  slate.add(slateObj);
+  // ---- weighing base (the machine docks on it; it also works as a scale beside the machine)
+  const base = new THREE.Group(); scene.add(base);
+  const BASE_TOP = 0.27;
+  const silver = new THREE.MeshPhysicalMaterial({ color: 0xcfd6e2, roughness: 0.32, metalness: 0.7, clearcoat: 0.4 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0xe8ecf2, roughness: 0.22, metalness: 0.95 });
+  const baseBody = new THREE.Mesh(new RoundedBoxGeometry(2.95, 0.22, 2.75, 5, 0.09), silver); baseBody.position.y = 0.11; base.add(baseBody);
+  const tray = new THREE.Mesh(new RoundedBoxGeometry(2.7, 0.05, 2.5, 3, 0.02), steel); tray.position.y = 0.245; base.add(tray);
+  const BZ = 1.38;                                          // front face of the base
+  const latch = new THREE.Mesh(new RoundedBoxGeometry(0.46, 0.09, 0.05, 3, 0.02), mat(0xaab3c4, 0.3, 0.8)); latch.position.set(-0.55, 0.12, BZ); base.add(latch);
+  const lcdCanvas = document.createElement('canvas'); lcdCanvas.width = 256; lcdCanvas.height = 96; const lcdTex = new THREE.CanvasTexture(lcdCanvas); lcdTex.colorSpace = THREE.SRGBColorSpace;
+  function setWeightText(txt) { const g = lcdCanvas.getContext('2d'); g.fillStyle = '#0c1422'; g.fillRect(0, 0, 256, 96); g.fillStyle = '#9fe8ff'; g.font = 'bold 54px Inter, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 128, 52); lcdTex.needsUpdate = true; }
+  setWeightText('0.00 kg');
+  const lcd = new THREE.Mesh(new RoundedBoxGeometry(0.78, 0.15, 0.03, 3, 0.02), new THREE.MeshBasicMaterial({ map: lcdTex })); lcd.position.set(0.3, 0.12, BZ + 0.005); base.add(lcd);
+  const tareM = mat(WHITE, 0.35, 0.02);
+  const tareKey = new THREE.Mesh(new RoundedBoxGeometry(0.34, 0.12, 0.07, 3, 0.03), tareM); tareKey.position.set(0.98, 0.12, BZ + 0.01); tareKey.userData.key = 'tare'; tareKey.userData.y0 = 0.12; tareKey.userData.base = tareM; base.add(tareKey); keyMeshes.push(tareKey);
+  const tareLab = (() => { const c = document.createElement('canvas'); c.width = 128; c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#1b2433'; g.font = 'bold 40px Inter, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('Tare', 64, 34); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.13), new THREE.MeshBasicMaterial({ map: t, transparent: true })); })();
+  tareLab.position.set(0, 0, 0.037); tareKey.add(tareLab);
+  const baseLed = new THREE.Mesh(new THREE.SphereGeometry(0.025, 12, 12), new THREE.MeshBasicMaterial({ color: 0x3ddc84 })); baseLed.position.set(-0.05, 0.18, BZ + 0.01); base.add(baseLed);
+  for (const [x, z] of [[-1.25, -1.1], [1.25, -1.1], [-1.25, 1.1], [1.25, 1.1]]) { const f = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.11, 0.05, 20), mat(0x0f141d, 0.7)); f.position.set(x, 0.025, z); base.add(f); }
+  // bowl and goods (shown when the machine is lifted off and goods are placed)
+  const goods = new THREE.Group(); goods.position.set(0, BASE_TOP, 0); base.add(goods);
+  const bowlPts = [[0, 0], [0.34, 0], [0.42, 0.03], [0.58, 0.16], [0.68, 0.3], [0.7, 0.45], [0.72, 0.48], [0.69, 0.48], [0.66, 0.44], [0.64, 0.31], [0.54, 0.18], [0.38, 0.06], [0, 0.04]].map(([r, y]) => new THREE.Vector2(r, y));
+  const bowlM = new THREE.Mesh(new THREE.LatheGeometry(bowlPts, 48), new THREE.MeshStandardMaterial({ color: 0xdfe5ee, roughness: 0.16, metalness: 1, side: THREE.DoubleSide })); goods.add(bowlM);
+  const toms = new THREE.Group(); goods.add(toms);
+  const tomM = new THREE.MeshPhysicalMaterial({ color: 0xc8281e, roughness: 0.28, clearcoat: 0.7 });
+  [[0, 0.5, 0, 0.22], [0.2, 0.42, 0.13, 0.2], [-0.2, 0.44, 0.1, 0.2], [0.04, 0.42, -0.24, 0.21], [-0.24, 0.4, -0.1, 0.19], [0.26, 0.4, -0.15, 0.19], [0.02, 0.7, 0.02, 0.2], [-0.12, 0.64, -0.12, 0.17]].forEach(([x, y, z, r]) => { const s = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 18), tomM); s.position.set(x, y - 0.14, z); s.scale.y = 0.9; toms.add(s); });
+  goods.visible = false; toms.visible = false;
+  shadowed(base); shadowed(goods);
+  const BASE_X_DOCKED = 0, BASE_X_OUT = 1.75, MACH_X_OUT = -1.75;
+  const MACH_Y_DOCKED = BASE_TOP + 0.14, MACH_Y_OUT = 0.14;
+  machine.position.y = MACH_Y_DOCKED;
+  let docked = true;
 
   // ---- interaction
-  let slateTarget = 0; const OUT = 2.75;
   const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
   let down = null;
   container.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
@@ -139,7 +168,7 @@ export function initScene({ container, screenEl, slateEl, onKey }) {
     const hit = pick(e); if (hit) { pressKey(hit); }
     down = null;
   });
-  container.addEventListener('pointermove', (e) => { if (e.buttons) return; const h = pick(e); container.style.cursor = h ? 'pointer' : 'grab'; keyMeshes.forEach((k) => k.material.emissive?.setHex(k === h ? 0x2255ff : 0x000000)); });
+  container.addEventListener('pointermove', (e) => { if (e.buttons) return; const h = pick(e); container.style.cursor = h ? 'pointer' : 'grab'; keyMeshes.forEach((k) => k.material.emissive?.setHex(k === h || (listening && k === micKey) ? 0x2255ff : 0x000000)); });
   function pick(e) { const r = container.getBoundingClientRect(); mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(mouse, camera); const hits = ray.intersectObjects(keyMeshes, false); return hits[0] ? hits[0].object : null; }
   const pressAnim = new Map();
   function pressKey(mesh) { pressAnim.set(mesh, 1); onKey(mesh.userData.key); }
@@ -158,9 +187,11 @@ export function initScene({ container, screenEl, slateEl, onKey }) {
   }
   let paperAnim = null;
 
-  const views = { docked: home, out: { pos: new THREE.Vector3(0.8, 6.4, 8.4), target: new THREE.Vector3(0, 0.5, 1.7) } };
+  const views = { docked: home, out: { pos: new THREE.Vector3(1.6, 3.6, 8.2), target: new THREE.Vector3(0, 0.95, 0.4) } };
   let tween = null;
-  function setSlateDocked(d) { slateTarget = d ? 0 : OUT; tween = { v: d ? views.docked : views.out, n: 0 }; }
+  function setDocked(d) { docked = d; if (d) { goods.visible = false; setWeightText('0.00 kg'); } tween = { v: d ? views.docked : views.out, n: 0 }; }
+  function setGoods(n) { goods.visible = docked ? false : n > 0; toms.visible = n > 1; }
+  function setListening(on) { listening = on; if (!on && micKey) micKey.material.emissive?.setHex(0x000000); }
   function resetView() { camera.position.copy(home.pos); controls.target.copy(home.target); controls.update(); }
 
   // ---- loop
@@ -170,21 +201,20 @@ export function initScene({ container, screenEl, slateEl, onKey }) {
     const dt = Math.min(clock.getDelta(), 0.1);
     if (tween) { const kk = 1 - Math.exp(-dt * 4.5); camera.position.lerp(tween.v.pos, kk); controls.target.lerp(tween.v.target, kk); tween.t = (tween.t || 0) + dt; if (tween.t > 2.5) tween = null; }
     controls.update();
-    // slate slide
-    const k = 1 - Math.exp(-dt * 9); slate.position.z += (slateTarget - slate.position.z) * k; if (Math.abs(slateTarget - slate.position.z) < 0.01) slate.position.z = slateTarget;
-    const slateOut = Math.abs(slate.position.z - OUT) < 0.06;
+    // machine lifts off the base and the base slides beside it (and back)
+    const k = 1 - Math.exp(-dt * 6);
+    const tx = docked ? 0 : MACH_X_OUT, ty = docked ? MACH_Y_DOCKED : MACH_Y_OUT, bx = docked ? BASE_X_DOCKED : BASE_X_OUT;
+    machine.position.x += (tx - machine.position.x) * k; machine.position.y += (ty - machine.position.y) * k; base.position.x += (bx - base.position.x) * k;
+    if (listening && micKey) micKey.material.emissiveIntensity = 0.55 + 0.45 * Math.sin(performance.now() / 160);
+    else if (micKey) micKey.material.emissiveIntensity = 1;
     // paper animation
     if (paperAnim) { paperAnim.t += 0.016; const p = Math.min(paperAnim.t / 1.6, 1); paper.scale.y = 0.001 + 0.82 * (1 - Math.pow(1 - p, 3)); if (paperAnim.t > 9) { paper.scale.y = Math.max(0.001, paper.scale.y - 0.05); if (paper.scale.y <= 0.002) paperAnim = null; } }
     // key press animation
-    pressAnim.forEach((v, k) => { const nv = v - 0.12; k.position.y = -Math.sin(Math.max(nv, 0) * Math.PI) * 0.03; if (nv <= 0) { k.position.y = 0; pressAnim.delete(k); } else pressAnim.set(k, nv); });
+    pressAnim.forEach((v, k) => { const nv = v - 0.12, y0 = k.userData.y0 || 0; k.position.y = y0 - Math.sin(Math.max(nv, 0) * Math.PI) * 0.03; if (nv <= 0) { k.position.y = y0; pressAnim.delete(k); } else pressAnim.set(k, nv); });
     // hide DOM planes when seen from behind (CSS3D has no depth test)
     screenObj.getWorldPosition(tmp); nrm.copy(slopeN).applyQuaternion(machine.quaternion);
     const front = nrm.dot(camera.position.clone().sub(tmp)) > 0.15;
     screenEl.style.visibility = front ? 'visible' : 'hidden';
-    slateObj.getWorldPosition(sWorld);
-    const slateUp = camera.position.y > sWorld.y + 0.2;
-    slateEl.style.visibility = slateOut && slateUp ? 'visible' : 'hidden';
-    slateEl.style.pointerEvents = slateOut && slateUp ? 'auto' : 'none';
     renderer.render(scene, camera); css.render(scene, camera);
     requestAnimationFrame(frame);
   }
@@ -193,5 +223,5 @@ export function initScene({ container, screenEl, slateEl, onKey }) {
   const fit = () => { const w = container.clientWidth, h = container.clientHeight; if (!w || !h) return; renderer.setSize(w, h); css.setSize(w, h); camera.aspect = w / h; camera.fov = 2 * Math.atan(Math.tan((32 * Math.PI / 180) / 2) * Math.max(1, 1.12 / camera.aspect)) * 180 / Math.PI; camera.updateProjectionMatrix(); };
   const ro = new ResizeObserver(fit); ro.observe(container); fit();
 
-  return { setSlateDocked, printReceipt, resetView, isOut: () => Math.abs(slate.position.z - OUT) < 0.06, _z: () => slate.position.z };
+  return { setDocked, setGoods, setWeightText, setListening, printReceipt, resetView, isDocked: () => docked };
 }
